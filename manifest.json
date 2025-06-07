@@ -1,0 +1,10 @@
+{
+	"id": "remember-scroll-position",
+	"name": "Remember Scroll Position",
+	"version": "1.0.0",
+	"minAppVersion": "0.9.12",
+	"description": "Remember scroll position for each note",
+	"author": "Scott Saville",
+	"authorUrl": "https://github.com/yourusername/",
+	"isDesktopOnly": false
+}
