@@ -27,6 +27,7 @@ export default class RememberScrollPosition extends Plugin {
 	lastLoadedFileName: string;
 	loadedLeafIdList: string[] = [];
 	loadingFile = false;
+	scrollThrottleTimer: number | null = null;
 
 	async onload() {
 		await this.loadSettings();
@@ -45,7 +46,7 @@ export default class RememberScrollPosition extends Plugin {
 		this.addSettingTab(new SettingTab(this.app, this));
 
 		this.registerEvent(
-			this.app.workspace.on('file-open', (file) => this.restoreEphemeralState())
+			this.app.workspace.on('file-open', () => this.restoreEphemeralState())
 		);
 		
 
@@ -62,16 +63,68 @@ export default class RememberScrollPosition extends Plugin {
 			this.app.vault.on('delete', (file) => this.deleteFile(file)),
 		);
 
-		//todo: replace by scroll and mouse cursor move events
-		this.registerInterval(
-			window.setInterval(() => this.checkEphemeralStateChanged(), 100)
-		);
+		// Set up event-driven scroll detection
+		this.setupScrollEventListeners();
 
 		this.registerInterval(
 			window.setInterval(() => this.writeDb(this.db), this.settings.saveTimer)
 		);
 
 		this.restoreEphemeralState();
+	}
+
+	onunload() {
+		// Clean up any pending throttle timer
+		if (this.scrollThrottleTimer) {
+			clearTimeout(this.scrollThrottleTimer);
+			this.scrollThrottleTimer = null;
+		}
+	}
+
+	setupScrollEventListeners() {
+		// Listen for scroll events on the workspace container
+		this.registerDomEvent(
+			this.app.workspace.containerEl,
+			'scroll',
+			this.onScrollEvent.bind(this),
+			{ passive: true, capture: true }
+		);
+
+		// Listen for mouse wheel events (for smooth scrolling)
+		this.registerDomEvent(
+			this.app.workspace.containerEl,
+			'wheel',
+			this.onScrollEvent.bind(this),
+			{ passive: true }
+		);
+
+		// Listen for keyboard events that might cause scrolling
+		this.registerDomEvent(
+			this.app.workspace.containerEl,
+			'keydown',
+			this.onKeyboardEvent.bind(this)
+		);
+	}
+
+	onScrollEvent() {
+		// Throttle scroll events to avoid excessive processing
+		if (this.scrollThrottleTimer) {
+			clearTimeout(this.scrollThrottleTimer);
+		}
+
+		this.scrollThrottleTimer = window.setTimeout(() => {
+			this.checkEphemeralStateChanged();
+			this.scrollThrottleTimer = null;
+		}, 50); // 50ms throttle - much better than 100ms polling
+	}
+
+	onKeyboardEvent(event: KeyboardEvent) {
+		// Only respond to keys that typically cause scrolling
+		const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', 'Space'];
+		if (scrollKeys.includes(event.key)) {
+			// Small delay to let the scroll happen first
+			setTimeout(() => this.onScrollEvent(), 10);
+		}
 	}
 
 	renameFile(file: TAbstractFile, oldPath: string) {
